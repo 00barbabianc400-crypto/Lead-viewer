@@ -167,10 +167,12 @@ const CONFIG = {
 const FETCH_RANGE = `${CONFIG.SHEET_TAB}!B2:P`;
 const DATES = ["24/08/2026","25/08/2026","26/08/2026","27/08/2026","28/08/2026"];
 const DAY_LABELS = ["Lun","Mar","Mer","Gio","Ven"];
-
+ 
 // Offset all'interno del range B:P (0 = colonna B)
+// B=0(Email), C=1(Name), D=2(Phone), E=3(Company), F=4(Role), G=5(Service),
+// H=6(Privacy), I=7(Marketing), J=8(Meeting?), K=9(When), L-P=10-14(Slots)
 const COL = { EMAIL:0, NAME:1, PHONE:2, COMPANY:3, ROLE:4, MEETING:8, SLOT_START:10 };
-
+ 
 function parseLead(row) {
   const wantsMeeting = (row[COL.MEETING] || "").trim().toLowerCase() === "yes";
   let slotDate = null, slotTime = null;
@@ -193,14 +195,14 @@ function parseLead(row) {
     slotTime
   };
 }
-
+ 
 let leads = [];
-
+ 
 // --- Auth: Google Identity Services, token in memoria, mai in localStorage ---
 let accessToken = null;
 let tokenClient = null;
 let pollTimer = null;
-
+ 
 function initAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
@@ -215,7 +217,7 @@ function initAuth() {
     tokenClient.requestAccessToken({ prompt: "" });
   });
 }
-
+ 
 function onSignedIn() {
   document.getElementById("gate").style.display = "none";
   document.getElementById("app-body").style.display = "block";
@@ -224,7 +226,7 @@ function onSignedIn() {
   // Rinnova il token in silenzio prima che scada (~1h).
   setInterval(() => tokenClient.requestAccessToken({ prompt: "" }), 45 * 60 * 1000);
 }
-
+ 
 function showGateError(msg) {
   const gate = document.getElementById("gate");
   let box = document.getElementById("gate-error");
@@ -236,12 +238,12 @@ function showGateError(msg) {
   }
   box.textContent = msg;
 }
-
+ 
 async function fetchAndRender() {
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SHEET_ID}/values/${encodeURIComponent(FETCH_RANGE)}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-
+ 
     if (res.status === 401) {
       // Token scaduto: rinnova e riprova una volta.
       tokenClient.requestAccessToken({ prompt: "" });
@@ -255,7 +257,7 @@ async function fetchAndRender() {
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
+ 
     const json = await res.json();
     leads = (json.values || []).map(parseLead);
     now = new Date();
@@ -264,33 +266,33 @@ async function fetchAndRender() {
     document.getElementById("count").textContent = "Aggiornamento non riuscito, ritento...";
   }
 }
-
+ 
 window.addEventListener("load", initAuth);
-
+ 
 // --- Orologio live: uno slot passato non deve più comparire ---
 // Confronto su data+ora completa, non solo sull'ora del giorno: uno slot
 // domani alle 08:30 resta visibile oggi, anche se "prima delle 9".
 let now = new Date();
-
+ 
 function slotDateTime(l) {
   if (!l.slotDate || !l.slotTime) return null;
   const [d, m, y] = l.slotDate.split("/").map(Number);
   const [hh, mm] = l.slotTime.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm);
 }
-
+ 
 function isPast(l) {
   const dt = slotDateTime(l);
   return dt ? dt < now : false; // senza slot ancora scelto (pending) resta visibile
 }
-
+ 
 function visibleLeads() {
   // "No meeting" fuori a prescindere; meeting già passati fuori.
   return leads.filter(l => l.wantsMeeting && !isPast(l));
 }
-
+ 
 let activeDate = null; // verrà agganciato a "oggi" al primo render
-
+ 
 function todayMidnight() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
@@ -303,14 +305,14 @@ function visibleDates() {
   const t = todayMidnight();
   return DATES.filter(d => toMidnight(d) >= t);
 }
-
+ 
 function renderDaystrip() {
   const visible = visibleLeads();
   const dates = visibleDates();
   // Se il giorno attivo è scaduto (rollover di mezzanotte) o non è mai stato impostato,
   // riaggancialo al primo giorno ancora valido (oggi, o il prossimo disponibile).
   if (!dates.includes(activeDate)) activeDate = dates[0] || null;
-
+ 
   const strip = document.getElementById("daystrip");
   strip.innerHTML = dates.map((d, i) => {
     const idx = DATES.indexOf(d);
@@ -326,19 +328,19 @@ function renderDaystrip() {
     el.addEventListener("click", () => { activeDate = el.dataset.date; render(); });
   });
 }
-
+ 
 function todayLabelDate() {
   const t = todayMidnight();
   const dd = String(t.getDate()).padStart(2, "0");
   const mm = String(t.getMonth() + 1).padStart(2, "0");
   return `${dd}/${mm}/${t.getFullYear()}`;
 }
-
+ 
 function leadCard(l) {
   const badge = l.slotDate
     ? `<span class="badge meet">${l.slotDate.slice(0,5)} · ${l.slotTime || ""}</span>`
     : `<span class="badge pending">Da schedulare</span>`;
-
+ 
   return `<div class="lead">
     <div class="lead-top">
       <div>
@@ -359,7 +361,7 @@ function leadCard(l) {
     </div>
   </div>`;
 }
-
+ 
 function render() {
   renderDaystrip(); // aggancia/riaggancia activeDate al giorno corretto
   const visible = visibleLeads();
@@ -373,7 +375,7 @@ function render() {
     ? filtered.map(leadCard).join("")
     : `<p class="empty">Nessun lead per questo giorno.</p>`;
 }
-
+ 
 // L'orologio si aggiorna ogni 30s (nasconde gli slot appena scaduti) a
 // prescindere dal polling del foglio, che gira ogni 7s per suo conto.
 setInterval(() => { if (accessToken) { now = new Date(); render(); } }, 30000);
