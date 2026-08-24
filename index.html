@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Red Hog Studio — Lead viewer</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --ink: #1c1a17;
+    --ink-soft: #5c574e;
+    --ink-faint: #8c8578;
+    --paper: #faf8f4;
+    --card: #ffffff;
+    --line: #e7e2d8;
+    --rust: #b5442e;
+    --rust-soft: #f3ded8;
+    --teal: #1d6e5c;
+    --teal-soft: #d9ede8;
+    --amber-soft: #f6ecd6;
+    --amber-ink: #7a5a17;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { max-width: 480px; margin: 0 auto; padding: 0 0 32px; }
+
+  header {
+    padding: 18px 16px 14px;
+    position: sticky; top: 0; z-index: 5;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--rust); font-weight: 700; margin: 0 0 2px; }
+  h1 { font-size: 19px; margin: 0; font-weight: 700; }
+  .count { color: var(--ink-soft); font-size: 13px; margin-top: 3px; }
+
+  .daystrip {
+    display: flex; gap: 8px; overflow-x: auto;
+    padding: 12px 16px 4px; scrollbar-width: none;
+  }
+  .daystrip::-webkit-scrollbar { display: none; }
+  .day {
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    background: var(--card);
+    border-radius: 12px;
+    padding: 8px 12px;
+    text-align: center;
+    min-width: 58px;
+    cursor: pointer;
+  }
+  .day .dname { font-size: 10px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .04em; }
+  .day .dnum { font-size: 16px; font-weight: 700; margin: 2px 0; }
+  .day .dcount { font-size: 10px; color: var(--teal); font-weight: 600; }
+  .day .dcount.zero { color: var(--ink-faint); font-weight: 400; }
+  .day.active { border-color: var(--rust); background: var(--rust-soft); }
+  .day.active .dnum, .day.active .dname { color: var(--rust); }
+  .day.all { min-width: 66px; }
+
+  .list { padding: 6px 16px 0; }
+  .lead {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .lead-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .lead-name { font-size: 15px; font-weight: 700; margin: 0; }
+  .lead-role { font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 0; }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 4px 9px;
+    border-radius: 999px; white-space: nowrap; flex: 0 0 auto;
+  }
+  .badge.meet { background: var(--teal-soft); color: var(--teal); }
+  .badge.pending { background: var(--amber-soft); color: var(--amber-ink); }
+  .badge.none { background: #efece5; color: var(--ink-faint); }
+
+  .lead-contacts { display: flex; gap: 8px; margin-top: 12px; }
+  .contact {
+    flex: 1;
+    display: flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 13px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .contact svg { flex: 0 0 auto; opacity: .65; }
+  .contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .slot-row {
+    margin-top: 10px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--teal); font-weight: 600;
+  }
+
+  .empty { text-align: center; color: var(--ink-faint); font-size: 13.5px; padding: 40px 20px; }
+
+  .note {
+    margin: 18px 16px 0;
+    font-size: 12px; color: var(--ink-faint);
+    border-top: 1px dashed var(--line);
+    padding-top: 12px;
+    line-height: 1.5;
+  }
+
+  .gate {
+    min-height: 60vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; gap: 14px;
+  }
+  .gate p { color: var(--ink-soft); font-size: 13.5px; max-width: 280px; margin: 0; }
+  #signin-btn {
+    background: var(--ink); color: #fff; border: none;
+    border-radius: 10px; padding: 11px 20px; font-size: 14px; font-weight: 700;
+    cursor: pointer;
+  }
+  #signin-btn:disabled { opacity: .5; cursor: default; }
+  .error-box {
+    margin: 16px; padding: 14px; border-radius: 12px;
+    background: var(--rust-soft); color: var(--rust);
+    font-size: 13.5px; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <p class="brand">Red Hog Studio</p>
+    <h1>Lead in arrivo</h1>
+    <p class="count" id="count"></p>
+  </header>
+
+  <div id="gate" class="gate">
+    <p>Accedi con l'account Google autorizzato a leggere il foglio lead.</p>
+    <button id="signin-btn">Accedi con Google</button>
+  </div>
+
+  <div id="app-body" style="display:none;">
+    <div class="daystrip" id="daystrip"></div>
+    <div class="list" id="list"></div>
+  </div>
+  <p class="note">Aggiornamento automatico ogni 7s. L'accesso ai dati è limitato agli account con cui il foglio è condiviso.</p>
+</div>
+
+<script>
+// ============ CONFIGURAZIONE — compila questi 3 valori ============
+const CONFIG = {
+  CLIENT_ID: "YOUR_CLIENT_ID.apps.googleusercontent.com", // Google Cloud Console → Credenziali → OAuth 2.0 Client ID
+  SHEET_ID: "YOUR_SHEET_ID",                                // dalla URL del foglio
+  SHEET_TAB: "Form responses 1"                             // nome della scheda — verifica il nome esatto in basso nel foglio
+};
+// ====================================================================
+
+// Range ristretto B:P — esclude timestamp (A) e testo libero (Q).
+// Le colonne di consenso (H,I) restano dentro il range fetchato per
+// evitare disallineamenti riga-per-riga tra range multipli, ma vengono
+// scartate subito nel parser e non toccano mai il DOM.
+const FETCH_RANGE = `${CONFIG.SHEET_TAB}!B2:P`;
+const DATES = ["24/08/2026","25/08/2026","26/08/2026","27/08/2026","28/08/2026"];
+const DAY_LABELS = ["Lun","Mar","Mer","Gio","Ven"];
+
+// Offset all'interno del range B:P (0 = colonna B)
+const COL = { EMAIL:0, NAME:1, PHONE:2, COMPANY:3, ROLE:4, MEETING:8, SLOT_START:10 };
+
+function parseLead(row) {
+  const wantsMeeting = (row[COL.MEETING] || "").trim().toLowerCase() === "yes";
+  let slotDate = null, slotTime = null;
+  for (let i = 0; i < 5; i++) {
+    const val = (row[COL.SLOT_START + i] || "").trim();
+    if (val) {
+      const parts = val.split(" - ");
+      slotDate = parts[0];
+      slotTime = parts[1] || null;
+      break;
+    }
+  }
+  return {
+    name: row[COL.NAME] || "—",
+    email: row[COL.EMAIL] || "",
+    phone: row[COL.PHONE] || "",
+    role: [row[COL.ROLE], row[COL.COMPANY]].filter(Boolean).join(" · "),
+    wantsMeeting,
+    slotDate,
+    slotTime
+  };
+}
+
+let leads = [];
+
+// --- Auth: Google Identity Services, token in memoria, mai in localStorage ---
+let accessToken = null;
+let tokenClient = null;
+let pollTimer = null;
+
+function initAuth() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.CLIENT_ID,
+    scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+    callback: (resp) => {
+      if (resp.error) { showGateError("Accesso negato. Riprova o contatta chi gestisce il foglio."); return; }
+      accessToken = resp.access_token;
+      onSignedIn();
+    }
+  });
+  document.getElementById("signin-btn").addEventListener("click", () => {
+    tokenClient.requestAccessToken({ prompt: "" });
+  });
+}
+
+function onSignedIn() {
+  document.getElementById("gate").style.display = "none";
+  document.getElementById("app-body").style.display = "block";
+  fetchAndRender();
+  pollTimer = setInterval(fetchAndRender, 7000);
+  // Rinnova il token in silenzio prima che scada (~1h).
+  setInterval(() => tokenClient.requestAccessToken({ prompt: "" }), 45 * 60 * 1000);
+}
+
+function showGateError(msg) {
+  const gate = document.getElementById("gate");
+  let box = document.getElementById("gate-error");
+  if (!box) {
+    box = document.createElement("p");
+    box.id = "gate-error";
+    box.style.cssText = "color:var(--rust); font-size:13px; margin:0;";
+    gate.appendChild(box);
+  }
+  box.textContent = msg;
+}
+
+async function fetchAndRender() {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SHEET_ID}/values/${encodeURIComponent(FETCH_RANGE)}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+
+    if (res.status === 401) {
+      // Token scaduto: rinnova e riprova una volta.
+      tokenClient.requestAccessToken({ prompt: "" });
+      return;
+    }
+    if (res.status === 403) {
+      clearInterval(pollTimer);
+      document.getElementById("app-body").style.display = "none";
+      document.getElementById("gate").style.display = "flex";
+      showGateError("Il tuo account non ha accesso a questo foglio. Chiedi al proprietario di condividerlo.");
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const json = await res.json();
+    leads = (json.values || []).map(parseLead);
+    now = new Date();
+    render();
+  } catch (err) {
+    document.getElementById("count").textContent = "Aggiornamento non riuscito, ritento...";
+  }
+}
+
+window.addEventListener("load", initAuth);
+
+// --- Orologio live: uno slot passato non deve più comparire ---
+// Confronto su data+ora completa, non solo sull'ora del giorno: uno slot
+// domani alle 08:30 resta visibile oggi, anche se "prima delle 9".
+let now = new Date();
+
+function slotDateTime(l) {
+  if (!l.slotDate || !l.slotTime) return null;
+  const [d, m, y] = l.slotDate.split("/").map(Number);
+  const [hh, mm] = l.slotTime.split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm);
+}
+
+function isPast(l) {
+  const dt = slotDateTime(l);
+  return dt ? dt < now : false; // senza slot ancora scelto (pending) resta visibile
+}
+
+function visibleLeads() {
+  // "No meeting" fuori a prescindere; meeting già passati fuori.
+  return leads.filter(l => l.wantsMeeting && !isPast(l));
+}
+
+let activeDate = null; // verrà agganciato a "oggi" al primo render
+
+function todayMidnight() {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+function toMidnight(dateStr) {
+  const [d, m, y] = dateStr.split("/").map(Number);
+  return new Date(y, m - 1, d);
+}
+// Mai giorni passati in fascia: solo oggi in poi.
+function visibleDates() {
+  const t = todayMidnight();
+  return DATES.filter(d => toMidnight(d) >= t);
+}
+
+function renderDaystrip() {
+  const visible = visibleLeads();
+  const dates = visibleDates();
+  // Se il giorno attivo è scaduto (rollover di mezzanotte) o non è mai stato impostato,
+  // riaggancialo al primo giorno ancora valido (oggi, o il prossimo disponibile).
+  if (!dates.includes(activeDate)) activeDate = dates[0] || null;
+
+  const strip = document.getElementById("daystrip");
+  strip.innerHTML = dates.map((d, i) => {
+    const idx = DATES.indexOf(d);
+    const n = visible.filter(l => l.slotDate === d).length;
+    const isToday = d === todayLabelDate();
+    return `<div class="day ${d === activeDate ? 'active' : ''}" data-date="${d}">
+      <div class="dname">${isToday ? 'Oggi' : DAY_LABELS[idx]}</div>
+      <div class="dnum">${d.slice(0,2)}</div>
+      <div class="dcount ${n === 0 ? 'zero' : ''}">${n} meet</div>
+    </div>`;
+  }).join("");
+  strip.querySelectorAll(".day").forEach(el => {
+    el.addEventListener("click", () => { activeDate = el.dataset.date; render(); });
+  });
+}
+
+function todayLabelDate() {
+  const t = todayMidnight();
+  const dd = String(t.getDate()).padStart(2, "0");
+  const mm = String(t.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${t.getFullYear()}`;
+}
+
+function leadCard(l) {
+  const badge = l.slotDate
+    ? `<span class="badge meet">${l.slotDate.slice(0,5)} · ${l.slotTime || ""}</span>`
+    : `<span class="badge pending">Da schedulare</span>`;
+
+  return `<div class="lead">
+    <div class="lead-top">
+      <div>
+        <p class="lead-name">${l.name}</p>
+        <p class="lead-role">${l.role}</p>
+      </div>
+      ${badge}
+    </div>
+    <div class="lead-contacts">
+      <a class="contact" href="tel:${l.phone.replace(/\s/g,'')}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <span>${l.phone || "—"}</span>
+      </a>
+      <a class="contact" href="mailto:${l.email}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M22 6l-10 7L2 6"/></svg>
+        <span>${l.email || "—"}</span>
+      </a>
+    </div>
+  </div>`;
+}
+
+function render() {
+  renderDaystrip(); // aggancia/riaggancia activeDate al giorno corretto
+  const visible = visibleLeads();
+  const filtered = activeDate ? visible.filter(l => l.slotDate === activeDate) : [];
+  const list = document.getElementById("list");
+  const timeLabel = now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("count").textContent = activeDate
+    ? `${filtered.length} meeting · aggiornato alle ${timeLabel}`
+    : `Nessun giorno futuro con meeting · aggiornato alle ${timeLabel}`;
+  list.innerHTML = filtered.length
+    ? filtered.map(leadCard).join("")
+    : `<p class="empty">Nessun lead per questo giorno.</p>`;
+}
+
+// L'orologio si aggiorna ogni 30s (nasconde gli slot appena scaduti) a
+// prescindere dal polling del foglio, che gira ogni 7s per suo conto.
+setInterval(() => { if (accessToken) { now = new Date(); render(); } }, 30000);
+</script>
+</body>
+</html>
