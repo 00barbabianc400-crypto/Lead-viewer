@@ -29,7 +29,7 @@
     -webkit-font-smoothing: antialiased;
   }
   .app { max-width: 480px; margin: 0 auto; padding: 0 0 32px; }
- 
+
   header {
     padding: 18px 16px 14px;
     position: sticky; top: 0; z-index: 5;
@@ -39,7 +39,7 @@
   .brand { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--rust); font-weight: 700; margin: 0 0 2px; }
   h1 { font-size: 19px; margin: 0; font-weight: 700; }
   .count { color: var(--ink-soft); font-size: 13px; margin-top: 3px; }
- 
+
   .daystrip {
     display: flex; gap: 8px; overflow-x: auto;
     padding: 12px 16px 4px; scrollbar-width: none;
@@ -62,7 +62,7 @@
   .day.active { border-color: var(--rust); background: var(--rust-soft); }
   .day.active .dnum, .day.active .dname { color: var(--rust); }
   .day.all { min-width: 66px; }
- 
+
   .list { padding: 6px 16px 0; }
   .lead {
     background: var(--card);
@@ -81,7 +81,7 @@
   .badge.meet { background: var(--teal-soft); color: var(--teal); }
   .badge.pending { background: var(--amber-soft); color: var(--amber-ink); }
   .badge.none { background: #efece5; color: var(--ink-faint); }
- 
+
   .lead-contacts { display: flex; gap: 8px; margin-top: 12px; }
   .contact {
     flex: 1;
@@ -95,15 +95,15 @@
   }
   .contact svg { flex: 0 0 auto; opacity: .65; }
   .contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
- 
+
   .slot-row {
     margin-top: 10px;
     display: flex; align-items: center; gap: 6px;
     font-size: 13px; color: var(--teal); font-weight: 600;
   }
- 
+
   .empty { text-align: center; color: var(--ink-faint); font-size: 13.5px; padding: 40px 20px; }
- 
+
   .note {
     margin: 18px 16px 0;
     font-size: 12px; color: var(--ink-faint);
@@ -111,7 +111,7 @@
     padding-top: 12px;
     line-height: 1.5;
   }
- 
+
   .gate {
     min-height: 60vh;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -140,7 +140,7 @@
     <h1>Lead in arrivo</h1>
     <p class="count" id="count"></p>
   </header>
- 
+
   <div id="gate" class="gate">
     <p>Accedi con l'account Google autorizzato a leggere il foglio lead.</p>
     <button id="signin-btn">
@@ -153,65 +153,53 @@
       Accedi con Google
     </button>
   </div>
- 
+
   <div id="app-body" style="display:none;">
     <div class="daystrip" id="daystrip"></div>
     <div class="list" id="list"></div>
   </div>
   <p class="note">Aggiornamento automatico ogni 7s. L'accesso ai dati è limitato agli account con cui il foglio è condiviso.</p>
 </div>
+
 <script>
 // ============ CONFIGURAZIONE — compila questi 3 valori ============
 const CONFIG = {
   CLIENT_ID: "6324821341-9duadc5vfa7t55attqefhnc50tuotoh6.apps.googleusercontent.com", // Google Cloud Console → Credenziali → OAuth 2.0 Client ID
-  SHEET_ID: "13LANHNBIgfW5fqEjovvYfHcAI3Dr47BUistC-tMc27k",                                // dalla URL del foglio
-  SHEET_TAB: "Risposte del modulo 1"                             // nome della scheda — verifica il nome esatto in basso nel foglio
+  SHEET_ID: "1I6mtVdzSOMTrXqJcqSxOJDinhvn4V7y8zNDbkIcT7bw",                                // dalla URL del foglio
+  SHEET_TAB: "Foglio1"                             // nome della scheda — verifica il nome esatto in basso nel foglio
 };
 // ====================================================================
 
-// Range ristretto B:P — esclude timestamp (A) e testo libero (Q).
-// Le colonne di consenso (H,I) restano dentro il range fetchato per
-// evitare disallineamenti riga-per-riga tra range multipli, ma vengono
-// scartate subito nel parser e non toccano mai il DOM.
-const FETCH_RANGE = `${CONFIG.SHEET_TAB}!B2:P`;
+// Nuova struttura: una riga = uno slot (non più una riga per lead).
+// Colonne: A=Giorno, B=Time slot, C=Status, D=Email, E=Nome, F=Phone,
+// G=Company, H=Role, I=Notes (esclusa dal fetch, non necessaria).
+const FETCH_RANGE = `${CONFIG.SHEET_TAB}!A2:H`;
 const DATES = ["24/08/2026","25/08/2026","26/08/2026","27/08/2026","28/08/2026"];
 const DAY_LABELS = ["Lun","Mar","Mer","Gio","Ven"];
- 
-// Offset all'interno del range B:P (0 = colonna B)
-// B=0(Email), C=1(Name), D=2(Phone), E=3(Company), F=4(Role), G=5(Service),
-// H=6(Privacy), I=7(Marketing), J=8(Meeting?), K=9(When), L-P=10-14(Slots)
-const COL = { EMAIL:0, NAME:1, PHONE:2, COMPANY:3, ROLE:4, MEETING:8, SLOT_START:10 };
- 
+
+const COL = { GIORNO:0, TIMESLOT:1, STATUS:2, EMAIL:3, NOME:4, PHONE:5, COMPANY:6, ROLE:7 };
+
 function parseLead(row) {
-  const wantsMeeting = (row[COL.MEETING] || "").trim().toLowerCase() === "yes";
-  let slotDate = null, slotTime = null;
-  for (let i = 0; i < 5; i++) {
-    const val = (row[COL.SLOT_START + i] || "").trim();
-    if (val) {
-      const parts = val.split(" - ");
-      slotDate = parts[0];
-      slotTime = parts[1] || null;
-      break;
-    }
-  }
+  const status = (row[COL.STATUS] || "").trim().toLowerCase();
+  const isBooked = status === "occupied";
   return {
-    name: row[COL.NAME] || "—",
+    isBooked,
+    name: row[COL.NOME] || "—",
     email: row[COL.EMAIL] || "",
     phone: row[COL.PHONE] || "",
     role: [row[COL.ROLE], row[COL.COMPANY]].filter(Boolean).join(" · "),
-    wantsMeeting,
-    slotDate,
-    slotTime
+    slotDate: row[COL.GIORNO] || null,
+    slotTime: row[COL.TIMESLOT] || null
   };
 }
- 
+
 let leads = [];
- 
+
 // --- Auth: Google Identity Services, token in memoria, mai in localStorage ---
 let accessToken = null;
 let tokenClient = null;
 let pollTimer = null;
- 
+
 function initAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
@@ -226,7 +214,7 @@ function initAuth() {
     tokenClient.requestAccessToken({ prompt: "" });
   });
 }
- 
+
 function onSignedIn() {
   document.getElementById("gate").style.display = "none";
   document.getElementById("app-body").style.display = "block";
@@ -235,7 +223,7 @@ function onSignedIn() {
   // Rinnova il token in silenzio prima che scada (~1h).
   setInterval(() => tokenClient.requestAccessToken({ prompt: "" }), 45 * 60 * 1000);
 }
- 
+
 function showGateError(msg) {
   const gate = document.getElementById("gate");
   let box = document.getElementById("gate-error");
@@ -247,12 +235,12 @@ function showGateError(msg) {
   }
   box.textContent = msg;
 }
- 
+
 async function fetchAndRender() {
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.SHEET_ID}/values/${encodeURIComponent(FETCH_RANGE)}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
- 
+
     if (res.status === 401) {
       // Token scaduto: rinnova e riprova una volta.
       tokenClient.requestAccessToken({ prompt: "" });
@@ -266,7 +254,7 @@ async function fetchAndRender() {
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
- 
+
     const json = await res.json();
     leads = (json.values || []).map(parseLead);
     now = new Date();
@@ -275,33 +263,33 @@ async function fetchAndRender() {
     document.getElementById("count").textContent = "Aggiornamento non riuscito, ritento...";
   }
 }
- 
+
 window.addEventListener("load", initAuth);
- 
+
 // --- Orologio live: uno slot passato non deve più comparire ---
 // Confronto su data+ora completa, non solo sull'ora del giorno: uno slot
 // domani alle 08:30 resta visibile oggi, anche se "prima delle 9".
 let now = new Date();
- 
+
 function slotDateTime(l) {
   if (!l.slotDate || !l.slotTime) return null;
   const [d, m, y] = l.slotDate.split("/").map(Number);
   const [hh, mm] = l.slotTime.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm);
 }
- 
+
 function isPast(l) {
   const dt = slotDateTime(l);
   return dt ? dt < now : false; // senza slot ancora scelto (pending) resta visibile
 }
- 
+
 function visibleLeads() {
-  // "No meeting" fuori a prescindere; meeting già passati fuori.
-  return leads.filter(l => l.wantsMeeting && !isPast(l));
+  // Solo slot occupati; quelli già passati fuori.
+  return leads.filter(l => l.isBooked && !isPast(l));
 }
- 
+
 let activeDate = null; // verrà agganciato a "oggi" al primo render
- 
+
 function todayMidnight() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
@@ -314,14 +302,14 @@ function visibleDates() {
   const t = todayMidnight();
   return DATES.filter(d => toMidnight(d) >= t);
 }
- 
+
 function renderDaystrip() {
   const visible = visibleLeads();
   const dates = visibleDates();
   // Se il giorno attivo è scaduto (rollover di mezzanotte) o non è mai stato impostato,
   // riaggancialo al primo giorno ancora valido (oggi, o il prossimo disponibile).
   if (!dates.includes(activeDate)) activeDate = dates[0] || null;
- 
+
   const strip = document.getElementById("daystrip");
   strip.innerHTML = dates.map((d, i) => {
     const idx = DATES.indexOf(d);
@@ -337,19 +325,19 @@ function renderDaystrip() {
     el.addEventListener("click", () => { activeDate = el.dataset.date; render(); });
   });
 }
- 
+
 function todayLabelDate() {
   const t = todayMidnight();
   const dd = String(t.getDate()).padStart(2, "0");
   const mm = String(t.getMonth() + 1).padStart(2, "0");
   return `${dd}/${mm}/${t.getFullYear()}`;
 }
- 
+
 function leadCard(l) {
   const badge = l.slotDate
     ? `<span class="badge meet">${l.slotDate.slice(0,5)} · ${l.slotTime || ""}</span>`
     : `<span class="badge pending">Da schedulare</span>`;
- 
+
   return `<div class="lead">
     <div class="lead-top">
       <div>
@@ -370,7 +358,7 @@ function leadCard(l) {
     </div>
   </div>`;
 }
- 
+
 function render() {
   renderDaystrip(); // aggancia/riaggancia activeDate al giorno corretto
   const visible = visibleLeads();
@@ -384,7 +372,7 @@ function render() {
     ? filtered.map(leadCard).join("")
     : `<p class="empty">Nessun lead per questo giorno.</p>`;
 }
- 
+
 // L'orologio si aggiorna ogni 30s (nasconde gli slot appena scaduti) a
 // prescindere dal polling del foglio, che gira ogni 7s per suo conto.
 setInterval(() => { if (accessToken) { now = new Date(); render(); } }, 30000);
